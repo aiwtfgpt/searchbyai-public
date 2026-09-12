@@ -117,7 +117,21 @@ ask SBA_ENDPOINT     "Public base URL for this node"
 
 [ -n "${SBA_NODE_ID:-}" ]  || die "node id is required"
 [ -n "${SBA_EMAIL:-}" ]    || die "owner email is required"
-[ -n "${SBA_ENDPOINT:-}" ] || die "endpoint URL is required"
+if [ -z "${SBA_ENDPOINT:-}" ]; then
+  echo ""
+  echo "${BOLD}No endpoint yet?${RESET}"
+  echo "${DIM}  This registry lists endpoints you already run — it does not"
+  echo "  install anything beyond a heartbeat."
+  echo ""
+  echo "  If you have no stack yet, there is a separate installer that sets"
+  echo "  up Ollama, Open WebUI, n8n, LightRAG and a Cloudflare tunnel, then"
+  echo "  walks you through the credentials:"
+  echo "      https://searchbyai.com/stack"
+  echo ""
+  echo "  Run this again once something is serving.${RESET}"
+  echo ""
+  die "endpoint URL is required"
+fi
 
 case "$SBA_ENDPOINT" in
   http://*|https://*) ;;
