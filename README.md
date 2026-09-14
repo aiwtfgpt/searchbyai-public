@@ -1,38 +1,83 @@
 # searchbyai-public
 
-Onboarding files for [SearchByAI](https://searchbyai.com) — a discovery registry
-for AI nodes (MCP servers, HTTP APIs, and CLI tools).
+Open components of [SearchByAI](https://searchbyai.com). Each directory is
+independent — take one, take both, ignore the rest.
 
-This repo is a mirror of the files served at `searchbyai.com`. It exists so a
-node can be registered without depending on the website being reachable, and
-so the install script can be audited before running it.
+| Component | What it is |
+|---|---|
+| [`registry/`](registry/) | Join the node registry so agents can find what you run |
+| [`stack/`](stack/) | Install a self-hosted AI stack on your own GPU |
 
-## Install (humans)
+---
+
+## registry/ — list a node
+
+For a machine that already serves something: an MCP server, an HTTP API, a
+CLI tool.
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/connect.sh)
+bash <(curl -fsSL https://searchbyai.com/connect.sh)
 ```
 
-Equivalent to running it from `https://searchbyai.com/connect.sh` — same
-script, same result. Requires `curl`, `jq`, `openssl`, and cron. Linux or
-macOS; not supported on native Windows (use WSL).
+Installs one directory (`~/.searchbyai`) and one cron entry. No sudo, no
+packages, no daemon, no open ports. It registers the node and heartbeats
+every five minutes so the listing can show real uptime.
 
-## Install (AI agents)
+Agents searching the registry connect **straight to your machine** — the
+registry is an index, not a proxy, and never sits in the traffic path.
 
-Read [`CONNECT.md`](./CONNECT.md). It walks an agent through inspecting its
-own host, writing a manifest, and registering — without inventing
-capabilities that were never verified.
+Remove it at any time:
 
-## Files
+```bash
+bash <(curl -fsSL https://searchbyai.com/uninstall.sh)
+```
 
-| File | Purpose |
-|---|---|
-| `connect.sh` | Interactive/non-interactive registration script |
-| `CONNECT.md` | Onboarding prompt for AI agents |
-| `schema/searchbyai-1.0.json` | JSON Schema for the node manifest |
+Agents: read [`registry/CONNECT.md`](registry/CONNECT.md).
+Manifest format: [`registry/schema/searchbyai-1.0.json`](registry/schema/searchbyai-1.0.json).
 
-## What this is not
+---
 
-This repo does not contain the hub's source code, database schema, or any
-operational infrastructure — those are private. This is the public-facing
-onboarding surface only.
+## stack/ — run your own AI
+
+For a machine with an NVIDIA GPU and nothing on it yet. Ollama, Open WebUI,
+n8n, LightRAG, crawl4ai and a Cloudflare tunnel, with two local models.
+
+**Ask your AI to do it.** Any agent with shell access can work through the
+guide, running what it can and stopping at each credential only a human can
+issue:
+
+```
+Read https://searchbyai.com/INSTALL.md and install this stack on my machine.
+```
+
+**Or run it yourself:**
+
+```bash
+mkdir -p ~/ai-stack && cd ~/ai-stack
+curl -fsSL https://searchbyai.com/stack/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://searchbyai.com/stack/install-stack.sh -o install-stack.sh
+bash install-stack.sh
+```
+
+Then follow [`stack/INSTALL.md`](stack/INSTALL.md) from step 2 for the tunnel,
+Google, n8n and Claude credentials.
+
+Needs 8GB of VRAM or more, Docker with the NVIDIA container toolkit, Linux,
+and a domain on Cloudflare.
+
+---
+
+## Reading before running
+
+Everything here is meant to be read first. Nothing asks for sudo, nothing
+installs packages behind your back, and every credential is issued by you, in
+your own dashboard, and stays on your machine.
+
+## Compatibility
+
+The install commands above are stable. Files may move inside this repo as
+components are added; the published URLs will not change.
+
+## Licence
+
+MIT. See [LICENSE](LICENSE).
