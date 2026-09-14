@@ -1,0 +1,264 @@
+# ==============================================================================
+# docker-compose.single-gpu.yml — AI stack for a single 24GB+ GPU
+#
+# Services:
+#   ollama       local models, OpenAI-compatible API
+#   open-webui   chat interface
+#   n8n          workflow automation
+#   crawl4ai     web scraping for agents
+#   lightrag     retrieval over your own documents
+#   mirofish     graph intelligence app (profile: graph)
+#   neo4j        graph database MiroFish requires (profile: graph)
+#   rss-bridge   feed conversion (profile: feeds)
+#   cloudflared  public HTTPS with no open ports and no static IP
+#
+# Ollama is the only inference engine, so one GPU is enough.
+#
+# Ports bind to 127.0.0.1 so nothing is exposed directly to the internet —
+# public access is the tunnel's job. To reach a service from another machine
+# on your LAN, drop the 127.0.0.1 prefix on that port and understand what you
+# are opening.
+#
+# Every secret comes from .env, generated per install. Nothing is hardcoded.
+#
+# Start:            docker compose -f docker-compose.single-gpu.yml up -d
+# With extras:      docker compose -f docker-compose.single-gpu.yml \
+#                     --profile graph --profile feeds up -d
+# ==============================================================================
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:11434:11434"
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      # Keep the chat model resident. Loading on every request adds ~10s.
+      - OLLAMA_KEEP_ALIVE=-1
+      # One model in VRAM at a time. On a single card, a second model
+      # loading alongside the first is what triggers OOM.
+      - OLLAMA_MAX_LOADED_MODELS=1
+      - OLLAMA_GPU_OVERHEAD=268435456
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - ai_network
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+      # First start pulls models; give it room before reporting unhealthy.
+      start_period: 120s
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:latest
+    container_name: open-webui
+    restart: always
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8080:8080"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - open_webui_data:/app/backend/data
+      - open_webui_config:/app/backend/config
+    networks:
+      - ai_network
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - USE_OLLAMA_DOCKER=true
+      # Lets you mint an API key for your own tools.
+      - ENABLE_API_KEY=true
+      # Generated per install by install-stack.sh. Must stay stable across
+      # restarts or every session is invalidated.
+      - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
+
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: always
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:5678:5678"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - n8n_data:/home/node/.n8n
+    networks:
+      - ai_network
+    environment:
+      # Set by cloudflare-setup.sh to the real public hostname. n8n builds
+      # webhook and OAuth callback URLs from this, so a wrong value produces
+      # OAuth redirects that fail with no useful error.
+      - WEBHOOK_URL=${N8N_WEBHOOK_URL}
+      - GENERIC_TIMEZONE=${TZ:-UTC}
+      - TZ=${TZ:-UTC}
+      - N8N_SKIP_WEBHOOK_DEREGISTRATION_SHUTDOWN=true
+      # Code nodes cannot read environment variables. Leaving this false
+      # would let any workflow — including one pasted from a template —
+      # print your tunnel token and API keys.
+      - N8N_BLOCK_ENV_ACCESS_IN_NODE=true
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_CHAT_MODEL=${OLLAMA_CHAT_MODEL}
+      - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN}
+
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: crawl4ai
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:11235:11235"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    # Chromium crashes on the default 64MB of shared memory.
+    shm_size: 1g
+    networks:
+      - ai_network
+    environment:
+      - CRAWL4AI_API_TOKEN=${CRAWL4AI_API_TOKEN}
+    volumes:
+      - crawl4ai_cache:/app/cache
+
+  lightrag:
+    image: ghcr.io/hkuds/lightrag:latest
+    container_name: lightrag
+    restart: unless-stopped
+    depends_on:
+      ollama:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:9621:9621"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      # Ollama binding, not openai: the OpenAI-format binding demands an
+      # OPENAI_API_KEY even against a local server.
+      - LLM_BINDING=ollama
+      - LLM_BINDING_HOST=http://ollama:11434
+      - LLM_MODEL=${OLLAMA_CHAT_MODEL}
+      - EMBEDDING_BINDING=ollama
+      - EMBEDDING_BINDING_HOST=http://ollama:11434
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-nomic-embed-text}
+      # Must match the embedding model's dimensions. nomic-embed-text is
+      # 768; changing the model without changing this corrupts the index.
+      - EMBEDDING_DIM=${EMBEDDING_DIM:-768}
+      - RAG_DIR=/app/data/rag_storage
+      - AUTH_ACCOUNTS=${LIGHTRAG_AUTH_ACCOUNTS}
+      - TOKEN_SECRET=${LIGHTRAG_TOKEN_SECRET}
+      - TOKEN_EXPIRE_HOURS=8760
+      - WHITELIST_PATHS=/health
+    volumes:
+      - lightrag_data:/app/data
+    networks:
+      - ai_network
+
+  rss-bridge:
+    image: rssbridge/rss-bridge:latest
+    container_name: rss-bridge
+    restart: always
+    ports:
+      - "127.0.0.1:3001:80"
+    networks:
+      - ai_network
+    profiles:
+      # Optional. Start with: docker compose --profile feeds up -d
+      - feeds
+
+  # --- Graph intelligence -----------------------------------------------------
+  # Optional. Start with: --profile graph
+  mirofish:
+    build:
+      context: ./mirofish
+    container_name: mirofish
+    profiles: [graph]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      # Points at Ollama, which is the only inference engine in this build.
+      - LLM_BASE_URL=http://ollama:11434/v1
+      - LLM_API_KEY=ollama
+      - LLM_MODEL_NAME=${OLLAMA_CHAT_MODEL}
+      - NEO4J_URI=bolt://neo4j:7687
+      - NEO4J_USER=${NEO4J_USER:-neo4j}
+      - NEO4J_PASSWORD=${NEO4J_PASSWORD}
+    volumes:
+      - mirofish_uploads:/app/backend/uploads
+    depends_on:
+      neo4j:
+        condition: service_healthy
+    networks:
+      - ai_network
+
+  neo4j:
+    image: neo4j:5.18-community
+    container_name: neo4j
+    profiles: [graph]
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    environment:
+      - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD}
+      - NEO4J_PLUGINS=["apoc"]
+      - NEO4J_server_memory_heap_initial__size=512m
+      - NEO4J_server_memory_heap_max__size=2g
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:7474 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - ai_network
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cloudflared
+    restart: always
+    # Token written by cloudflare-setup.sh. Outbound-only: nothing dials in,
+    # so the host needs no open ports and no static IP.
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    networks:
+      - ai_network
+    depends_on:
+      - n8n
+      - open-webui
+
+networks:
+  ai_network:
+    driver: bridge
+
+volumes:
+  ollama_data:
+  mirofish_uploads:
+  neo4j_data:
+  neo4j_logs:
+  open_webui_data:
+  open_webui_config:
+  n8n_data:
+  crawl4ai_cache:
+  lightrag_data:
