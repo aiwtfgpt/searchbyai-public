@@ -80,8 +80,8 @@ If the GPU or the toolkit is missing, stop and tell the user what to fix.
 
 ```bash
 mkdir -p ~/ai-stack && cd ~/ai-stack
-curl -fsSL https://searchbyai.com/stack/docker-compose.yml -o docker-compose.yml
-curl -fsSL https://searchbyai.com/stack/install-stack.sh -o install-stack.sh
+curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/scripts/install-stack.sh -o install-stack.sh
 bash install-stack.sh
 ```
 
@@ -133,7 +133,7 @@ else.
 
 ```bash
 cd ~/ai-stack && set -a && . ./.env && set +a
-curl -fsSL https://searchbyai.com/stack/cloudflare-setup.sh -o cloudflare-setup.sh
+curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/scripts/cloudflare-setup.sh -o cloudflare-setup.sh
 bash cloudflare-setup.sh <client-name> <their-domain> n8n:5678 open-webui:8080
 ```
 
@@ -191,7 +191,7 @@ This runs in Google Cloud Shell, under the user's own Google identity:
 3. Run there:
 
 ```bash
-curl -fsSL https://searchbyai.com/stack/google-oauth-setup.sh -o g.sh
+curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/scripts/google-oauth-setup.sh -o g.sh
 bash g.sh n8n.<their-domain>
 ```
 
@@ -284,16 +284,16 @@ Makes what they built discoverable by other agents and people. Traffic goes
 straight to their machine; the registry never sits in the path.
 
 ```bash
-bash <(curl -fsSL https://searchbyai.com/connect.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/registry/connect.sh)
 ```
 
 It asks a few questions, registers the node, and installs a 5-minute
 heartbeat. The owner gets a verification email — the node is not listed until
 they click it.
 
-To remove it later: `bash <(curl -fsSL https://searchbyai.com/uninstall.sh)`
+To remove it later: `bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/registry/uninstall.sh)`
 
-Full detail for agents: <https://searchbyai.com/CONNECT.md>
+Full detail for agents: <https://github.com/aiwtfgpt/searchbyai-public/blob/main/registry/CONNECT.md>
 
 ---
 
