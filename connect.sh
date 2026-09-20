@@ -5,13 +5,13 @@
 # Registers this machine as a discoverable node.
 #
 # Usage:
-#   bash <(curl -fsSL https://searchbyai.com/connect.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/connect.sh)
 #
 # Non-interactive (all prompts can be pre-answered):
 #   SBA_NODE_ID=my-node SBA_DISPLAY_NAME="My Node" \
 #   SBA_EMAIL=me@example.com SBA_ENDPOINT=https://my.example.com \
 #   SBA_CITY=Denver SBA_REGION=CO SBA_COUNTRY=US \
-#   SBA_YES=1 bash <(curl -fsSL https://searchbyai.com/connect.sh)
+#   SBA_YES=1 bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/connect.sh)
 #
 # Requires: curl, jq, openssl
 # Writes:   ~/.searchbyai/{node.json,sign.sh,heartbeat.sh}
