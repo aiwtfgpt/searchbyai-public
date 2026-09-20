@@ -16,7 +16,16 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-INSTALL_DIR="${1:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+# Default: wherever the compose file actually is. The guided install puts it
+# next to this script; in a repo checkout the script sits in scripts/ and the
+# compose is one level up. An explicit first argument overrides both.
+if [ -n "${1:-}" ]; then
+  INSTALL_DIR="$1"
+elif [ -f "$SCRIPT_DIR/docker-compose.yml" ] || [ -f "$SCRIPT_DIR/docker-compose.single-gpu.yml" ]; then
+  INSTALL_DIR="$SCRIPT_DIR"
+else
+  INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+fi
 # Accept either name: the guided install downloads it as docker-compose.yml,
 # a direct download keeps its published name.
 if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
