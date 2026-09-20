@@ -108,7 +108,7 @@ echo "[2/6] Checking compose file ..."
 if [ ! -f "$COMPOSE_FILE" ]; then
   echo "  ✗ No compose file in $INSTALL_DIR"
   echo "    Download it first:"
-  echo "      curl -fsSL https://searchbyai.com/stack/docker-compose.yml -o docker-compose.yml"
+  echo "      curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.yml -o docker-compose.yml"
   exit 1
 fi
 echo "  ✓ $COMPOSE_FILE"
