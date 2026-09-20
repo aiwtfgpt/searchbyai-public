@@ -2,7 +2,7 @@
 # ==============================================================================
 # uninstall.sh — remove this machine's SearchByAI listing and local files
 #
-#   bash <(curl -fsSL https://searchbyai.com/uninstall.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/registry/uninstall.sh)
 #
 # Does three things, in the order that matters:
 #
