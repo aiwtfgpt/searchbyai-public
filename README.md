@@ -16,7 +16,7 @@ For a machine that already serves something: an MCP server, an HTTP API, a
 CLI tool.
 
 ```bash
-bash <(curl -fsSL https://searchbyai.com/connect.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/registry/connect.sh)
 ```
 
 Installs one directory (`~/.searchbyai`) and one cron entry. No sudo, no
@@ -29,7 +29,7 @@ registry is an index, not a proxy, and never sits in the traffic path.
 Remove it at any time:
 
 ```bash
-bash <(curl -fsSL https://searchbyai.com/uninstall.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/registry/uninstall.sh)
 ```
 
 Agents: read [`registry/CONNECT.md`](registry/CONNECT.md).
@@ -47,15 +47,15 @@ guide, running what it can and stopping at each credential only a human can
 issue:
 
 ```
-Read https://searchbyai.com/INSTALL.md and install this stack on my machine.
+Read https://github.com/aiwtfgpt/searchbyai-public/blob/main/stack/INSTALL.md and install this stack on my machine.
 ```
 
 **Or run it yourself:**
 
 ```bash
 mkdir -p ~/ai-stack && cd ~/ai-stack
-curl -fsSL https://searchbyai.com/stack/docker-compose.yml -o docker-compose.yml
-curl -fsSL https://searchbyai.com/stack/install-stack.sh -o install-stack.sh
+curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.yml -o docker-compose.yml
+curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/scripts/install-stack.sh -o install-stack.sh
 bash install-stack.sh
 ```
 
@@ -75,8 +75,12 @@ your own dashboard, and stays on your machine.
 
 ## Compatibility
 
-The install commands above are stable. Files may move inside this repo as
-components are added; the published URLs will not change.
+Install reads from this repo, so the commands work whether or not
+searchbyai.com is up. Paths here are stable; if a file has to move, the old
+location keeps working for a release.
+
+Registering a node still calls the SearchByAI API at `searchbyai.com` — that
+is the registry itself, not the installer.
 
 ## Licence
 
