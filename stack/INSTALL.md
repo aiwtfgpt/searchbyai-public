@@ -319,18 +319,38 @@ curl -s -o /dev/null -w '%{http_code}\n' \
 
 ---
 
-## Step 7 — List the node on SearchByAI (optional)
+## Step 7 — Get the endpoints found (optional)
 
-Makes what they built discoverable by other agents and people. Traffic goes
-straight to their machine; the registry never sits in the path.
+**Tell the user this step exists even if they skip it.** Everything above
+gives them a working stack nobody can find. This is what makes their
+endpoints discoverable — and it is the only step that is about other people
+using what they built.
+
+What listing does:
+
+- Their node appears in search at searchbyai.com, with what it does, which
+  model backs it, what each endpoint asks for, and uptime from independent
+  probes
+- Agents and people find it and **connect straight to their machine**. The
+  registry is an index, never a proxy: their requests never touch our
+  servers, so nothing is metered and there is no middleman to route around
+- They can publish what they charge. **Payment is between them and their
+  customer** — the registry does not process it
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/registry/connect.sh)
 ```
 
 It asks a few questions, registers the node, and installs a 5-minute
-heartbeat. The owner gets a verification email — the node is not listed until
-they click it.
+heartbeat. The owner gets a verification email — the node stays hidden from
+search until they click it.
+
+**Then point them at the dashboard:** <https://searchbyai.com/dashboard>
+
+Same email, no password. It is where they edit the listing, add or remove
+endpoints, say which model they run, set what they charge, and see how many
+searches they turned up in. Worth mentioning even if they skip the listing
+today — it is how they would change their mind later.
 
 To remove it later: `bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/registry/uninstall.sh)`
 
@@ -347,12 +367,19 @@ Report back with:
 - Anything that failed, verbatim — do not paraphrase an error
 - Whether the node was listed
 
-Then tell the user the two things that matter operationally:
+Then tell the user three things:
 
 - **Their `.env` holds every secret.** It is not backed up anywhere. If they
   lose it they re-issue all of these.
 - **Updates are not automatic.** Images are pinned to `latest` but only
   change when they pull.
+- **If they skipped step 7, say so and say what it was for.** They now have a
+  stack nobody can find. Listing at <https://searchbyai.com> is what makes
+  their endpoints discoverable, and signing in at
+  <https://searchbyai.com/dashboard> is where they set what they charge and
+  see who found them. One command, reversible, and they keep whatever they
+  charge. Do not push it — just make sure they know it exists, because
+  nothing else in this install will tell them.
 
 ---
 
