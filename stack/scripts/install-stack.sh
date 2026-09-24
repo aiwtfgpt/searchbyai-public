@@ -26,13 +26,6 @@ elif [ -f "$SCRIPT_DIR/docker-compose.yml" ] || [ -f "$SCRIPT_DIR/docker-compose
 else
   INSTALL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 fi
-# Accept either name: the guided install downloads it as docker-compose.yml,
-# a direct download keeps its published name.
-if [ -f "$INSTALL_DIR/docker-compose.yml" ]; then
-  COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
-else
-  COMPOSE_FILE="$INSTALL_DIR/docker-compose.single-gpu.yml"
-fi
 ENV_FILE="$INSTALL_DIR/.env"
 
 # Model defaults. Both are pulled after the stack is up.
@@ -106,11 +99,10 @@ if command -v nvidia-smi >/dev/null 2>&1 \
     echo "    and re-run this script."
   fi
 else
-  echo "  ! No NVIDIA GPU detected — installing in CPU mode."
-  echo "    Everything works except fast local inference: n8n, Open WebUI,"
-  echo "    LightRAG and crawl4ai are unaffected."
-  echo "    A local model on CPU answers slowly. Most people in this position"
-  echo "    point n8n at an API provider instead — onboard.sh stage 4 covers it."
+  echo "  ! No NVIDIA GPU detected — installing the cloud build."
+  echo "    n8n, Open WebUI, LightRAG and crawl4ai all work the same; they"
+  echo "    call your API provider instead of a local model. You will be"
+  echo "    asked for one key in a moment."
 fi
 
 if [ "$MISSING" -ne 0 ]; then
@@ -122,25 +114,41 @@ echo ""
 
 # --- Step 2: compose file ---------------------------------------------------
 echo "[2/6] Checking compose file ..."
+# GPU present -> the local-inference build. No GPU -> the cloud build, which
+# has no Ollama at all. CPU inference is deliberately not an option: a 9GB
+# model at a few tokens per second is worse than an API key and pins the
+# machine while it runs.
+if [ "$HAS_GPU" -eq 1 ]; then
+  COMPOSE_FILE="$INSTALL_DIR/docker-compose.yml"
+  [ -f "$COMPOSE_FILE" ] || COMPOSE_FILE="$INSTALL_DIR/docker-compose.single-gpu.yml"
+  BUILD="gpu"
+else
+  COMPOSE_FILE="$INSTALL_DIR/docker-compose.cloud.yml"
+  BUILD="cloud"
+fi
+
 if [ ! -f "$COMPOSE_FILE" ]; then
-  echo "  ✗ No compose file in $INSTALL_DIR"
-  echo "    Download it first:"
-  echo "      curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.yml -o docker-compose.yml"
+  echo "  ✗ Not found: $(basename "$COMPOSE_FILE")"
+  echo "    Download it:"
+  if [ "$BUILD" = "cloud" ]; then
+    echo "      curl -fsSL https://searchbyai.com/stack/docker-compose.cloud.yml -o docker-compose.cloud.yml"
+  else
+    echo "      curl -fsSL https://searchbyai.com/stack/docker-compose.yml -o docker-compose.yml"
+  fi
   exit 1
 fi
-echo "  ✓ $COMPOSE_FILE"
+echo "  ✓ $(basename "$COMPOSE_FILE") ($BUILD build)"
 
-# Layer the GPU override only when a card is actually usable.
 COMPOSE_ARGS=(-f "$COMPOSE_FILE")
 if [ "$HAS_GPU" -eq 1 ]; then
   GPU_FILE="$INSTALL_DIR/docker-compose.gpu.yml"
   if [ -f "$GPU_FILE" ]; then
     COMPOSE_ARGS+=(-f "$GPU_FILE")
-    echo "  ✓ GPU override: $GPU_FILE"
+    echo "  ✓ GPU override applied"
   else
-    echo "  ! docker-compose.gpu.yml not found — running on CPU."
+    echo "  ! docker-compose.gpu.yml missing — Ollama would run on CPU."
     echo "    Download it: curl -fsSL https://searchbyai.com/stack/docker-compose.gpu.yml -o docker-compose.gpu.yml"
-    HAS_GPU=0
+    exit 1
   fi
 fi
 echo ""
@@ -165,10 +173,66 @@ ensure_env() {
   fi
 }
 
+# --- provider key, cloud build only ------------------------------------------
+# One key drives Open WebUI, n8n and LightRAG. All three providers publish an
+# OpenAI-compatible endpoint, so a single LLM_BASE_URL / LLM_API_KEY pair
+# covers them and the rest of the compose needs no branching.
+if [ "$BUILD" = "cloud" ] && ! grep -q '^LLM_API_KEY=.\+' "$ENV_FILE" 2>/dev/null; then
+  echo ""
+  echo "  No GPU, so nothing runs a model locally. Pick a provider:"
+  echo ""
+  echo "    1) Anthropic   console.anthropic.com/settings/keys"
+  echo "    2) OpenAI      platform.openai.com/api-keys"
+  echo "    3) Gemini      aistudio.google.com/apikey"
+  echo "    4) Skip        set it later in .env"
+  echo ""
+  printf "  Choice [1-4]: "
+  # -t 0 is the reliable check: /dev/tty can exist and still not be
+  # readable in a container or a piped shell.
+  if [ -t 0 ]; then read -r PROVIDER || PROVIDER=4; else PROVIDER=4; fi
+
+  case "$PROVIDER" in
+    1) P_NAME="Anthropic"; P_VAR="ANTHROPIC_API_KEY"
+       P_URL="https://api.anthropic.com/v1"; P_MODEL="claude-sonnet-4-5" ;;
+    2) P_NAME="OpenAI";    P_VAR="OPENAI_API_KEY"
+       P_URL="https://api.openai.com/v1";    P_MODEL="gpt-4o-mini" ;;
+    3) P_NAME="Gemini";    P_VAR="GEMINI_API_KEY"
+       P_URL="https://generativelanguage.googleapis.com/v1beta/openai"
+       P_MODEL="gemini-2.0-flash" ;;
+    *) P_NAME=""; ;;
+  esac
+
+  if [ -n "$P_NAME" ]; then
+    printf "  Paste your %s API key: " "$P_NAME"
+    if [ -t 0 ]; then read -r P_KEY || P_KEY=""; else P_KEY=""; fi
+    if [ -n "$P_KEY" ]; then
+      {
+        echo "${P_VAR}=${P_KEY}"
+        echo "LLM_BASE_URL=${P_URL}"
+        echo "LLM_API_KEY=${P_KEY}"
+        echo "LLM_MODEL=${P_MODEL}"
+      } >> "$ENV_FILE"
+      echo "  + ${P_VAR}, LLM_BASE_URL, LLM_API_KEY, LLM_MODEL"
+    else
+      P_NAME=""
+    fi
+  fi
+
+  if [ -z "$P_NAME" ]; then
+    # Placeholders so compose does not warn. Nothing calls a model until
+    # these are real.
+    ensure_env LLM_BASE_URL "https://api.anthropic.com/v1"
+    ensure_env LLM_API_KEY  ""
+    ensure_env LLM_MODEL    "claude-sonnet-4-5"
+    echo "  ! No key set. Add LLM_API_KEY to .env before the AI nodes work."
+  fi
+  echo ""
+fi
+
 ensure_env WEBUI_SECRET_KEY      "$(openssl rand -hex 32)"
 ensure_env LIGHTRAG_TOKEN_SECRET "$(openssl rand -hex 32)"
 ensure_env CRAWL4AI_API_TOKEN    "$(openssl rand -hex 16)"
-ensure_env OLLAMA_CHAT_MODEL     "$CHAT_MODEL"
+if [ "$BUILD" = "gpu" ]; then ensure_env OLLAMA_CHAT_MODEL "$CHAT_MODEL"; fi
 ensure_env EMBEDDING_MODEL       "$EMBED_MODEL"
 ensure_env EMBEDDING_DIM         "768"
 ensure_env TZ                    "$(timedatectl show -p Timezone --value 2>/dev/null || echo UTC)"
@@ -209,68 +273,51 @@ echo "[5/6] Starting services ..."
 TUNNEL_TOKEN=$(grep '^CLOUDFLARE_TUNNEL_TOKEN=' "$ENV_FILE" | cut -d= -f2-)
 if [ -z "$TUNNEL_TOKEN" ]; then
   echo "  (skipping cloudflared — no tunnel token yet; onboard.sh sets it)"
-  docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" up -d \
-    ollama open-webui n8n crawl4ai lightrag
+  if [ "$BUILD" = "gpu" ]; then
+    docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" up -d \
+      ollama open-webui n8n crawl4ai lightrag
+  else
+    docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" up -d \
+      open-webui n8n crawl4ai lightrag
+  fi
 else
   docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" up -d
 fi
 echo ""
 
-echo "  Waiting for Ollama to report healthy (up to 3 minutes) ..."
-for i in $(seq 1 36); do
-  if docker inspect --format '{{.State.Health.Status}}' ollama 2>/dev/null | grep -q healthy; then
-    echo "  ✓ Ollama healthy."
-    break
-  fi
-  if [ "$i" -eq 36 ]; then
-    echo "  ✗ Ollama did not become healthy in time."
-    echo "    Check: docker logs ollama"
-    exit 1
-  fi
-  sleep 5
-done
+if [ "$BUILD" = "gpu" ]; then
+  echo "  Waiting for Ollama to report healthy (up to 3 minutes) ..."
+  for i in $(seq 1 36); do
+    if docker inspect --format '{{.State.Health.Status}}' ollama 2>/dev/null | grep -q healthy; then
+      echo "  ✓ Ollama healthy."
+      break
+    fi
+    if [ "$i" -eq 36 ]; then
+      echo "  ✗ Ollama did not become healthy in time."
+      echo "    Check: docker logs ollama"
+      exit 1
+    fi
+    sleep 5
+  done
+fi
 echo ""
 
 # --- Step 6: models ---------------------------------------------------------
-echo "[6/6] Pulling models ..."
-if [ "$HAS_GPU" -eq 1 ]; then
+if [ "$BUILD" = "gpu" ]; then
+  echo "[6/6] Pulling models ..."
   echo "  - $CHAT_MODEL (several GB)"
   docker exec ollama ollama pull "$CHAT_MODEL"
+  echo "  - $EMBED_MODEL"
+  docker exec ollama ollama pull "$EMBED_MODEL"
 else
-  # Not pulled on CPU. It is a ~9GB download for something that answers at a
-  # few tokens per second — a slow, expensive disappointment rather than a
-  # working default. The embedding model is different: it is small and fast
-  # enough on CPU to be genuinely useful, and LightRAG needs it.
-  echo "  - skipping $CHAT_MODEL (no GPU: ~9GB for a few tokens/sec)"
-  echo "    To pull it anyway:  docker exec ollama ollama pull $CHAT_MODEL"
-  echo "    A smaller option:   docker exec ollama ollama pull llama3.2:1b"
+  echo "[6/6] No local models — this build calls your provider."
 fi
-echo "  - $EMBED_MODEL"
-docker exec ollama ollama pull "$EMBED_MODEL"
 echo ""
 
 echo "################################################################"
 echo "#  Stack is up."
 echo "################################################################"
 echo ""
-if [ "$HAS_GPU" -eq 0 ]; then
-  echo "----------------------------------------------------------------"
-  echo "  Running on CPU — no chat model was pulled."
-  echo ""
-  echo "  n8n, Open WebUI, crawl4ai and the tunnel work exactly the same."
-  echo "  For the AI nodes, point n8n at a provider instead of local Ollama:"
-  echo "    onboard.sh stage 4, or Settings → Credentials → New in n8n."
-  echo ""
-  echo "  LightRAG is configured for a local model and will error until one"
-  echo "  exists. Either pull a small one:"
-  echo "      docker exec ollama ollama pull llama3.2:1b"
-  echo "      sed -i 's|^OLLAMA_CHAT_MODEL=.*|OLLAMA_CHAT_MODEL=llama3.2:1b|' .env"
-  echo "      docker compose \"\${COMPOSE_ARGS[@]}\" up -d lightrag"
-  echo "  or leave LightRAG unused."
-  echo "----------------------------------------------------------------"
-  echo ""
-fi
-
 echo "Local URLs (bound to localhost — the tunnel makes them public):"
 echo "  Open WebUI   http://localhost:8080"
 echo "  n8n          http://localhost:5678"
@@ -278,8 +325,8 @@ echo "  LightRAG     http://localhost:9621"
 echo "  crawl4ai     http://localhost:11235"
 echo ""
 echo "Optional extras:"
-echo "  Graph intelligence: docker compose -f $COMPOSE_FILE --profile graph up -d"
-echo "  RSS feeds:         docker compose -f $COMPOSE_FILE --profile feeds up -d"
+echo "  Graph intelligence: docker compose -f $(basename "$COMPOSE_FILE") --profile graph up -d"
+echo "  RSS feeds:          docker compose -f $(basename "$COMPOSE_FILE") --profile feeds up -d"
 echo ""
 echo "Next: connect it to the internet and wire up credentials."
 echo ""
