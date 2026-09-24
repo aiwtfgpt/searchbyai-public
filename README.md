@@ -6,7 +6,7 @@ independent — take one, take both, ignore the rest.
 | Component | What it is |
 |---|---|
 | [`registry/`](registry/) | Join the node registry so agents can find what you run |
-| [`stack/`](stack/) | Install a self-hosted AI stack on your own GPU |
+| [`stack/`](stack/) | Install a self-hosted AI stack — GPU optional |
 
 ---
 
@@ -39,31 +39,55 @@ Manifest format: [`registry/schema/searchbyai-1.0.json`](registry/schema/searchb
 
 ## stack/ — run your own AI
 
-For a machine with an NVIDIA GPU and nothing on it yet. Ollama, Open WebUI,
-n8n, LightRAG, crawl4ai and a Cloudflare tunnel, with two local models.
+Ollama, Open WebUI, n8n, LightRAG, crawl4ai and a Cloudflare tunnel. Two
+builds, and the installer picks for you:
+
+| | **gpu** | **cloud** |
+|---|---|---|
+| Needs | NVIDIA GPU, 8GB+ VRAM, container toolkit | No GPU |
+| Inference | Local models via Ollama | Anthropic, OpenAI or Gemini |
+| Downloads | ~9GB of models | Nothing |
+
+There is no CPU-inference option on purpose: a 9GB model answering at a few
+tokens per second is worse than an API key, and it pins the machine while it
+runs. Without a GPU you get the cloud build, which ships without Ollama
+entirely — n8n, Open WebUI, LightRAG and crawl4ai are identical either way.
 
 **Ask your AI to do it.** Any agent with shell access can work through the
-guide, running what it can and stopping at each credential only a human can
-issue:
+guide. It checks the hardware first, installs the matching build, and stops at
+each credential only a human can issue:
 
 ```
-Read https://github.com/aiwtfgpt/searchbyai-public/blob/main/stack/INSTALL.md and install this stack on my machine.
+Read https://searchbyai.com/INSTALL.md and install this stack on my machine.
 ```
 
-**Or run it yourself:**
+**Or run it yourself.** Check the hardware first — which files you need depends
+on the answer:
+
+```bash
+nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
+docker info 2>/dev/null | grep -i 'Runtimes.*nvidia'
+```
 
 ```bash
 mkdir -p ~/ai-stack && cd ~/ai-stack
-curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.yml -o docker-compose.yml
-curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/scripts/install-stack.sh -o install-stack.sh
+curl -fsSL https://searchbyai.com/stack/install-stack.sh -o install-stack.sh
+
+# GPU with the container toolkit:
+curl -fsSL https://searchbyai.com/stack/docker-compose.yml     -o docker-compose.yml
+curl -fsSL https://searchbyai.com/stack/docker-compose.gpu.yml -o docker-compose.gpu.yml
+
+# No GPU — have an Anthropic, OpenAI or Gemini key ready:
+curl -fsSL https://searchbyai.com/stack/docker-compose.cloud.yml -o docker-compose.cloud.yml
+
 bash install-stack.sh
 ```
 
-Then follow [`stack/INSTALL.md`](stack/INSTALL.md) from step 2 for the tunnel,
-Google, n8n and Claude credentials.
+The installer re-checks the hardware itself, so a wrong guess is caught rather
+than acted on. Then follow [`stack/INSTALL.md`](stack/INSTALL.md) from step 2
+for the tunnel, Google, n8n and Claude credentials.
 
-Needs 8GB of VRAM or more, Docker with the NVIDIA container toolkit, Linux,
-and a domain on Cloudflare.
+Needs Docker and Linux either way.
 
 ---
 
@@ -85,3 +109,4 @@ is the registry itself, not the installer.
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
+
