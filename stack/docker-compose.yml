@@ -27,6 +27,9 @@
 # ==============================================================================
 
 services:
+  # CPU by default so the stack installs on any machine. install-stack.sh
+  # detects a GPU and adds the override file that gives this container the
+  # card — see docker-compose.gpu.yml.
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
@@ -36,8 +39,6 @@ services:
     ports:
       - "127.0.0.1:11434:11434"
     environment:
-      - NVIDIA_VISIBLE_DEVICES=0
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       # Keep the chat model resident. Loading on every request adds ~10s.
       - OLLAMA_KEEP_ALIVE=-1
       # One model in VRAM at a time. On a single card, a second model
@@ -48,14 +49,6 @@ services:
       - ollama_data:/root/.ollama
     networks:
       - ai_network
-    runtime: nvidia
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              device_ids: ["0"]
-              capabilities: [gpu]
     healthcheck:
       test: ["CMD", "ollama", "list"]
       interval: 10s
@@ -81,8 +74,6 @@ services:
     networks:
       - ai_network
     environment:
-      - NVIDIA_VISIBLE_DEVICES=all
-      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
       - OLLAMA_BASE_URL=http://ollama:11434
       - USE_OLLAMA_DOCKER=true
       # Lets you mint an API key for your own tools.
