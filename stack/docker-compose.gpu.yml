@@ -1,0 +1,30 @@
+# ==============================================================================
+# docker-compose.gpu.yml — give Ollama the GPU
+#
+# An override, not a standalone file. The base compose runs everything on CPU
+# so the stack installs on any machine; this layers the NVIDIA bits on top when
+# a card is actually present.
+#
+# install-stack.sh adds it automatically when it detects a working GPU. To
+# apply it by hand:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.gpu.yml up -d
+#
+# Requires the NVIDIA container toolkit, not just the driver. With the driver
+# alone these settings make Ollama fail to start, which is worse than running
+# on CPU — that is why the base file does not include them.
+# ==============================================================================
+
+services:
+  ollama:
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=0
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    runtime: nvidia
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ["0"]
+              capabilities: [gpu]
