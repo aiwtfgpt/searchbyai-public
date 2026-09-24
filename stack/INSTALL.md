@@ -27,74 +27,102 @@ Everything between those five steps is yours to run.
 
 ## What gets installed
 
-| Service | Purpose | Port |
-|---|---|---|
-| Ollama | Local models, OpenAI-compatible API | 11434 |
-| Open WebUI | Chat interface | 8080 |
-| n8n | Workflow automation | 5678 |
-| LightRAG | Retrieval over the user's own documents | 9621 |
-| crawl4ai | Web scraping for agents | 11235 |
-| cloudflared | Public HTTPS, no open ports | — |
+| Service | Purpose | Port | Build |
+|---|---|---|---|
+| Ollama | Local models, OpenAI-compatible API | 11434 | gpu only |
+| Open WebUI | Chat interface| 8080 | both |
+| n8n | Workflow automation| 5678 | both |
+| LightRAG | Retrieval over the user's own documents| 9621 | both |
+| crawl4ai | Web scraping for agents| 11235 | both |
+| cloudflared | Public HTTPS, no open ports| — | both |
 
-Two models are pulled: `huihui_ai/gemma-4-abliterated:e4b` for chat (~5GB of
-VRAM at a 32k context) and `nomic-embed-text` for retrieval.
+**gpu build** pulls two models: `huihui_ai/gemma-4-abliterated:e4b` for chat
+(~5GB of VRAM at a 32k context) and `nomic-embed-text` for retrieval.
+
+**cloud build** has no Ollama and pulls nothing. Open WebUI, n8n, LightRAG and
+MiroFish all call the provider whose key you supply.
 
 Every port binds to `127.0.0.1`. Nothing is exposed to the internet except
 through the tunnel.
 
 ---
 
-## Step 0 — Check the machine
+## Step 0 — Check the machine first
 
-Run these and read the output before going further.
+**Download nothing until this passes.** Which build to install depends on what
+you find here, and the two are different files.
 
 ```bash
 nvidia-smi --query-gpu=name,memory.total --format=csv,noheader
-docker --version && docker compose version
 docker info 2>/dev/null | grep -i 'Runtimes.*nvidia'
+docker --version && docker compose version
 uname -s
 ```
 
-Requirements:
+Read the results against this:
 
-- **A GPU is optional.** With an NVIDIA card of 8GB or more, Ollama gets the
-  GPU and a local chat model is pulled. Without one the stack still installs
-  and n8n, Open WebUI, LightRAG and crawl4ai work exactly the same — only
-  local inference is affected, and the installer skips the ~9GB model rather
-  than downloading something that answers at a few tokens per second. Point
-  n8n at an API provider instead (step 5).
-- **Docker with the NVIDIA container toolkit**, if using a GPU. The driver
-  alone is not enough: `nvidia-smi` passing while the toolkit is missing is
-  the single most common failure, and it does not surface until Ollama
-  starts. The installer detects this and falls back to CPU rather than
-  producing a container that will not start. To use the GPU, install the
-  toolkit first:
-  <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>
-  then `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`.
-- **Linux.** macOS has no NVIDIA GPU. Windows needs WSL2 with GPU passthrough.
-- **A domain the user controls**, already added to Cloudflare. If their domain
-  is registered elsewhere they must add it to Cloudflare and change
-  nameservers at the registrar first — that propagates for minutes to hours,
-  so start it now if it is not done.
+| Finding | Build | Why |
+|---|---|---|
+| GPU ≥8GB **and** nvidia runtime listed | **gpu** | Ollama runs models locally |
+| GPU but no nvidia runtime | **cloud**, or fix the toolkit | The driver alone is not enough — enabling the GPU without the container toolkit produces a container that will not start |
+| No GPU | **cloud** | Nothing runs locally; an API provider does the inference |
+| GPU under 8GB | **cloud** | The model would not fit; it would spill to system RAM and crawl |
 
-No GPU is not a reason to stop. Tell the user the stack will run on CPU and
-that the AI nodes will need an API provider, then continue.
+**There is no CPU-inference option.** A 9GB model answering at a few tokens per
+second is worse than an API key and pins the machine while it runs, so the
+cloud build ships without Ollama entirely.
+
+Also required either way:
+
+- **Docker and `docker compose` v2.** If missing, stop and tell the user.
+- **Linux.** macOS has no NVIDIA GPU. Windows needs WSL2.
+- **A domain the user controls, already on Cloudflare.** If it is registered
+  elsewhere they must add it and change nameservers at the registrar — that
+  propagates for minutes to hours, so start it now if it is not done.
+
+**No GPU is not a reason to stop.** Tell the user which build you are about to
+install and why, then continue.
 
 ---
 
-## Step 1 — Download and start the stack
+## Step 1 — Download the right build
 
 ```bash
 mkdir -p ~/ai-stack && cd ~/ai-stack
-curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.yml -o docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/scripts/install-stack.sh -o install-stack.sh
-# Only needed if this machine has an NVIDIA GPU. Harmless to download either way.
+```
+
+**If step 0 said gpu:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.yml -o docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.gpu.yml -o docker-compose.gpu.yml
+```
+
+**If step 0 said cloud:**
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.cloud.yml -o docker-compose.cloud.yml
+```
+
+The cloud build asks which provider to use during install. Have one of these
+ready — the user creates it, and it goes in their own `.env`, never in chat:
+
+- Anthropic — <https://console.anthropic.com/settings/keys>
+- OpenAI — <https://platform.openai.com/api-keys>
+- Gemini — <https://aistudio.google.com/apikey>
+
+Then run it:
+
+```bash
 bash install-stack.sh
 ```
 
+It re-checks the hardware itself and picks the matching compose file, so a
+wrong guess in step 0 is caught rather than acted on.
+
 The script checks prerequisites, generates secrets into a local `.env`, pulls
-images and models, and waits for Ollama to report healthy. Several GB of
+images, and on the gpu build pulls models and waits for Ollama. Several GB of
 download; expect 10–30 minutes.
 
 **Verify before continuing:**
@@ -106,8 +134,9 @@ curl -s -o /dev/null -w '%{http_code}\n' localhost:8080
 curl -s -o /dev/null -w '%{http_code}\n' localhost:5678
 ```
 
-All three HTTP checks should return `200`. If Ollama is unhealthy, read
-`docker logs ollama` — a missing NVIDIA toolkit shows up here.
+All three HTTP checks should return `200`. On the gpu build, if Ollama is
+unhealthy read `docker logs ollama` — a missing NVIDIA toolkit shows up there.
+The cloud build has no Ollama, so skip the `11434` check.
 
 ---
 
@@ -254,9 +283,13 @@ Any workflow can now use the **Anthropic Chat Model** node. In an AI Agent
 node, set the model to Claude and it will reason over their data, call their
 other nodes as tools, and write back to their own systems.
 
-The local Ollama model is still there and costs nothing to run. A common
-split: Ollama for bulk and private work, Claude for the calls that need
-stronger reasoning.
+On the **gpu build** the local model is still there and costs nothing to run.
+A common split: Ollama for bulk and private work, Claude for the calls that
+need stronger reasoning.
+
+On the **cloud build** this key is the only inference the stack has, so it was
+already set during install — this step is where you add it to n8n as a
+credential.
 
 ---
 
@@ -331,7 +364,9 @@ Then tell the user the two things that matter operationally:
 | `https://n8n.<domain>` does not resolve | DNS still propagating, or the zone is not active in Cloudflare |
 | n8n API returns 500 with a valid key | `N8N_USER_MANAGEMENT_JWT_SECRET` unset; pin it, restart, make a new key |
 | Google OAuth redirect fails | Redirect URI must match exactly, including `https://` and no trailing slash |
-| Model answers slowly | Model fell back to CPU — check `docker exec ollama ollama ps` shows `100% GPU` |
+| Model answers slowly (gpu build) | Model fell back to CPU — check `docker exec ollama ollama ps` shows `100% GPU` |
+| AI nodes fail (cloud build) | `LLM_API_KEY` empty in `.env`, or the key has no credit |
+| LightRAG cannot index (cloud build) | Embeddings need OpenAI specifically — Anthropic has none and Gemini's is not OpenAI-compatible. Add `OPENAI_API_KEY` or leave LightRAG unused. |
 
 ---
 
