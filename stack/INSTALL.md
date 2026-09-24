@@ -57,13 +57,18 @@ uname -s
 
 Requirements:
 
-- **NVIDIA GPU, 8GB VRAM or more.** Less than 8GB will load the model into
-  system RAM and run at a few tokens per second — technically working,
-  practically unusable. Tell the user before continuing.
-- **Docker with the NVIDIA container toolkit.** The driver alone is not
-  enough: `nvidia-smi` passing while the toolkit is missing is the single
-  most common failure, and it does not surface until Ollama starts. If the
-  third command prints nothing, install the toolkit first:
+- **A GPU is optional.** With an NVIDIA card of 8GB or more, Ollama gets the
+  GPU and a local chat model is pulled. Without one the stack still installs
+  and n8n, Open WebUI, LightRAG and crawl4ai work exactly the same — only
+  local inference is affected, and the installer skips the ~9GB model rather
+  than downloading something that answers at a few tokens per second. Point
+  n8n at an API provider instead (step 5).
+- **Docker with the NVIDIA container toolkit**, if using a GPU. The driver
+  alone is not enough: `nvidia-smi` passing while the toolkit is missing is
+  the single most common failure, and it does not surface until Ollama
+  starts. The installer detects this and falls back to CPU rather than
+  producing a container that will not start. To use the GPU, install the
+  toolkit first:
   <https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html>
   then `sudo nvidia-ctk runtime configure --runtime=docker && sudo systemctl restart docker`.
 - **Linux.** macOS has no NVIDIA GPU. Windows needs WSL2 with GPU passthrough.
@@ -72,7 +77,8 @@ Requirements:
   nameservers at the registrar first — that propagates for minutes to hours,
   so start it now if it is not done.
 
-If the GPU or the toolkit is missing, stop and tell the user what to fix.
+No GPU is not a reason to stop. Tell the user the stack will run on CPU and
+that the AI nodes will need an API provider, then continue.
 
 ---
 
@@ -82,6 +88,8 @@ If the GPU or the toolkit is missing, stop and tell the user what to fix.
 mkdir -p ~/ai-stack && cd ~/ai-stack
 curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.yml -o docker-compose.yml
 curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/scripts/install-stack.sh -o install-stack.sh
+# Only needed if this machine has an NVIDIA GPU. Harmless to download either way.
+curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/stack/docker-compose.gpu.yml -o docker-compose.gpu.yml
 bash install-stack.sh
 ```
 
