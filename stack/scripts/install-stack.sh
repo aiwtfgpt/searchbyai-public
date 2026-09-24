@@ -77,32 +77,40 @@ if command -v docker >/dev/null 2>&1 && ! docker info >/dev/null 2>&1; then
   MISSING=1
 fi
 
-if ! command -v nvidia-smi >/dev/null 2>&1; then
-  echo "  ✗ nvidia-smi not found — no NVIDIA driver."
-  echo "    This stack needs a GPU for Ollama."
-  MISSING=1
-else
-  GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)
+# GPU is optional. Without one the stack still installs and n8n, Open WebUI,
+# LightRAG and crawl4ai all work normally — only local model inference is
+# affected, and that falls back to CPU or an external provider.
+HAS_GPU=0
+if command -v nvidia-smi >/dev/null 2>&1 \
+   && nvidia-smi --query-gpu=name --format=csv,noheader >/dev/null 2>&1; then
   GPU_NAME=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)
   GPU_VRAM=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader 2>/dev/null | head -1)
-  echo "  ✓ GPU: $GPU_NAME ($GPU_VRAM), $GPU_COUNT card(s) detected"
-  if [ "$GPU_COUNT" -gt 1 ]; then
-      echo "    Note: this build uses device 0 only."
-  fi
-fi
+  GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l)
 
-# The NVIDIA container runtime is a separate install from the driver, and
-# its absence is the single most common cause of a stack that builds fine
-# and then fails the moment Ollama starts.
-if command -v docker >/dev/null 2>&1 && docker info 2>/dev/null | grep -qi 'Runtimes.*nvidia'; then
-  echo "  ✓ NVIDIA container runtime registered with Docker"
-elif command -v docker >/dev/null 2>&1; then
-  echo "  ✗ NVIDIA container runtime NOT registered with Docker."
-  echo "    The driver alone is not enough — containers need the toolkit:"
-  echo "      https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
-  echo "    Then: sudo nvidia-ctk runtime configure --runtime=docker"
-  echo "          sudo systemctl restart docker"
-  MISSING=1
+  # The toolkit is a separate install from the driver. Enabling the GPU in
+  # compose without it makes Ollama fail to start — worse than CPU, because
+  # it looks like a broken install rather than a slow one.
+  if docker info 2>/dev/null | grep -qi 'Runtimes.*nvidia'; then
+    HAS_GPU=1
+    echo "  ✓ GPU: $GPU_NAME ($GPU_VRAM), $GPU_COUNT card(s)"
+    if [ "$GPU_COUNT" -gt 1 ]; then
+      echo "    Note: this build uses device 0 only."
+    fi
+  else
+    echo "  ! GPU found ($GPU_NAME) but the NVIDIA container toolkit is not"
+    echo "    registered with Docker, so containers cannot reach it."
+    echo "    Installing on CPU. To use the GPU, install the toolkit:"
+    echo "      https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html"
+    echo "    then: sudo nvidia-ctk runtime configure --runtime=docker"
+    echo "          sudo systemctl restart docker"
+    echo "    and re-run this script."
+  fi
+else
+  echo "  ! No NVIDIA GPU detected — installing in CPU mode."
+  echo "    Everything works except fast local inference: n8n, Open WebUI,"
+  echo "    LightRAG and crawl4ai are unaffected."
+  echo "    A local model on CPU answers slowly. Most people in this position"
+  echo "    point n8n at an API provider instead — onboard.sh stage 4 covers it."
 fi
 
 if [ "$MISSING" -ne 0 ]; then
@@ -121,6 +129,20 @@ if [ ! -f "$COMPOSE_FILE" ]; then
   exit 1
 fi
 echo "  ✓ $COMPOSE_FILE"
+
+# Layer the GPU override only when a card is actually usable.
+COMPOSE_ARGS=(-f "$COMPOSE_FILE")
+if [ "$HAS_GPU" -eq 1 ]; then
+  GPU_FILE="$INSTALL_DIR/docker-compose.gpu.yml"
+  if [ -f "$GPU_FILE" ]; then
+    COMPOSE_ARGS+=(-f "$GPU_FILE")
+    echo "  ✓ GPU override: $GPU_FILE"
+  else
+    echo "  ! docker-compose.gpu.yml not found — running on CPU."
+    echo "    Download it: curl -fsSL https://searchbyai.com/stack/docker-compose.gpu.yml -o docker-compose.gpu.yml"
+    HAS_GPU=0
+  fi
+fi
 echo ""
 
 # --- Step 3: .env -----------------------------------------------------------
@@ -175,7 +197,7 @@ echo ""
 
 # --- Step 4: pull images ----------------------------------------------------
 echo "[4/6] Pulling images (several GB — this is the slow step) ..."
-docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" pull --quiet 2>&1 | grep -v '^$' || true
+docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" pull --quiet 2>&1 | grep -v '^$' || true
 echo "  ✓ Images pulled."
 echo ""
 
@@ -187,10 +209,10 @@ echo "[5/6] Starting services ..."
 TUNNEL_TOKEN=$(grep '^CLOUDFLARE_TUNNEL_TOKEN=' "$ENV_FILE" | cut -d= -f2-)
 if [ -z "$TUNNEL_TOKEN" ]; then
   echo "  (skipping cloudflared — no tunnel token yet; onboard.sh sets it)"
-  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d \
+  docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" up -d \
     ollama open-webui n8n crawl4ai lightrag
 else
-  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" up -d
+  docker compose "${COMPOSE_ARGS[@]}" --env-file "$ENV_FILE" up -d
 fi
 echo ""
 
@@ -210,9 +232,19 @@ done
 echo ""
 
 # --- Step 6: models ---------------------------------------------------------
-echo "[6/6] Pulling models (several GB on first install) ..."
-echo "  - $CHAT_MODEL"
-docker exec ollama ollama pull "$CHAT_MODEL"
+echo "[6/6] Pulling models ..."
+if [ "$HAS_GPU" -eq 1 ]; then
+  echo "  - $CHAT_MODEL (several GB)"
+  docker exec ollama ollama pull "$CHAT_MODEL"
+else
+  # Not pulled on CPU. It is a ~9GB download for something that answers at a
+  # few tokens per second — a slow, expensive disappointment rather than a
+  # working default. The embedding model is different: it is small and fast
+  # enough on CPU to be genuinely useful, and LightRAG needs it.
+  echo "  - skipping $CHAT_MODEL (no GPU: ~9GB for a few tokens/sec)"
+  echo "    To pull it anyway:  docker exec ollama ollama pull $CHAT_MODEL"
+  echo "    A smaller option:   docker exec ollama ollama pull llama3.2:1b"
+fi
 echo "  - $EMBED_MODEL"
 docker exec ollama ollama pull "$EMBED_MODEL"
 echo ""
@@ -221,6 +253,24 @@ echo "################################################################"
 echo "#  Stack is up."
 echo "################################################################"
 echo ""
+if [ "$HAS_GPU" -eq 0 ]; then
+  echo "----------------------------------------------------------------"
+  echo "  Running on CPU — no chat model was pulled."
+  echo ""
+  echo "  n8n, Open WebUI, crawl4ai and the tunnel work exactly the same."
+  echo "  For the AI nodes, point n8n at a provider instead of local Ollama:"
+  echo "    onboard.sh stage 4, or Settings → Credentials → New in n8n."
+  echo ""
+  echo "  LightRAG is configured for a local model and will error until one"
+  echo "  exists. Either pull a small one:"
+  echo "      docker exec ollama ollama pull llama3.2:1b"
+  echo "      sed -i 's|^OLLAMA_CHAT_MODEL=.*|OLLAMA_CHAT_MODEL=llama3.2:1b|' .env"
+  echo "      docker compose \"\${COMPOSE_ARGS[@]}\" up -d lightrag"
+  echo "  or leave LightRAG unused."
+  echo "----------------------------------------------------------------"
+  echo ""
+fi
+
 echo "Local URLs (bound to localhost — the tunnel makes them public):"
 echo "  Open WebUI   http://localhost:8080"
 echo "  n8n          http://localhost:5678"
