@@ -5,13 +5,13 @@
 # Registers this machine as a discoverable node.
 #
 # Usage:
-#   bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/connect.sh)
+#   bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/registry/connect.sh)
 #
 # Non-interactive (all prompts can be pre-answered):
 #   SBA_NODE_ID=my-node SBA_DISPLAY_NAME="My Node" \
 #   SBA_EMAIL=me@example.com SBA_ENDPOINT=https://my.example.com \
 #   SBA_CITY=Denver SBA_REGION=CO SBA_COUNTRY=US \
-#   SBA_YES=1 bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/connect.sh)
+#   SBA_YES=1 bash <(curl -fsSL https://raw.githubusercontent.com/aiwtfgpt/searchbyai-public/main/registry/connect.sh)
 #
 # Requires: curl, jq, openssl
 # Writes:   ~/.searchbyai/{node.json,sign.sh,heartbeat.sh}
@@ -20,6 +20,8 @@
 set -euo pipefail
 
 HUB="${SBA_HUB:-https://searchbyai.com/api}"
+# Web root for links shown to the user; HUB is the API base.
+HUB_WEB="${HUB%/api}"
 CONFIG_DIR="${HOME}/.searchbyai"
 CONFIG_FILE="${CONFIG_DIR}/node.json"
 
@@ -383,6 +385,12 @@ echo "  Config:    ${CONFIG_FILE}"
 echo ""
 echo "  ${BOLD}Check your email${RESET} — ${SBA_EMAIL}"
 echo "  ${DIM}Your node stays hidden from search until you click that link.${RESET}"
+echo ""
+echo "  ${BOLD}Then sign in${RESET} — ${HUB_WEB}/dashboard"
+echo "  ${DIM}Same email, no password. Edit your listing, say which model you"
+echo "  run, set what you charge, and see how many searches you turned up"
+echo "  in. Payment is between you and your customer — we do not"
+echo "  process it.${RESET}"
 echo ""
 echo "  ${DIM}Keep ${CONFIG_FILE} safe. The secret is not recoverable.${RESET}"
 echo ""
