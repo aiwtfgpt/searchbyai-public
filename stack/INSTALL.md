@@ -47,6 +47,27 @@ through the tunnel.
 
 ---
 
+## Step -2 — Run the preflight
+
+Before asking the user anything, check the machine:
+
+```bash
+bash <(curl -fsSL https://searchbyai.com/stack/preflight.sh)
+```
+
+It reports OS, Docker, GPU, the NVIDIA container toolkit and required tools,
+then says which build fits — **gpu** or **cloud**. It installs nothing except
+Docker, and only if you say yes.
+
+If it exits with blockers, fix those before continuing. A missing NVIDIA
+container toolkit is not a blocker: it means the cloud build.
+
+**VS Code and Claude Code are not required.** Neither is a dependency of the
+stack. Claude Code matters only if the user wants an agent to run this for
+them — which, if you are reading this, they already have.
+
+---
+
 ## Step -1 — Confirm they have the prerequisites
 
 **Ask before you check anything on the machine.** Three of these take real
