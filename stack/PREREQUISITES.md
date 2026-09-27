@@ -1,13 +1,34 @@
 # Before you install
 
-Read this first. A domain's nameservers can take up to 24 hours to propagate,
-so start that before you touch the installer.
+This is a **Docker** install on a Linux machine you control.
 
-**The short version:** you need a Linux machine with Docker. Everything else
-is either free or replaceable — including the domain.
+**Start here:**
 
-This is a **Docker** install. Everything runs in containers on a machine you
-control.
+```bash
+bash <(curl -fsSL https://searchbyai.com/stack/preflight.sh)
+```
+
+That checks the machine, tells you which build fits, and offers to install
+Docker if it is missing. It changes nothing else.
+
+---
+
+## Pick your path
+
+Everything below splits on one question, so answer it first.
+
+| | **A — I have a domain** | **B — I do not** |
+|---|---|---|
+| Public hostname | Cloudflare tunnel on your domain | Tailscale Funnel, free |
+| Cost | ~$10/year | nothing |
+| Setup time | 10 min + up to 24h for DNS | 5 min |
+| n8n Google nodes | **yes** | no — Google will not redirect to `.ts.net` |
+| Everything else | identical | identical |
+
+**Path B is a real option, not a downgrade.** You lose Gmail, Drive, Sheets,
+Docs and Calendar inside n8n. n8n itself, Open WebUI, LightRAG, crawl4ai,
+local models and listing on SearchByAI all work the same. Adding a domain
+later changes nothing else.
 
 ---
 
@@ -128,20 +149,49 @@ LightRAG's indexing.
 
 ---
 
-## The order, and why it cannot change
+## What happens when
 
-Each step needs something the previous one produces.
+A common confusion: *"connect n8n to Google"* cannot be a prerequisite,
+because n8n does not exist until you have installed it. Only two things
+genuinely happen beforehand.
+
+### Before the installer runs — you, in a browser
+
+| | Path A (domain) | Path B (no domain) |
+|---|---|---|
+| 1 | Add your domain to Cloudflare, change nameservers, wait for **Active** | — |
+| 2 | Create a Cloudflare API token | — |
+| 3 | Create a Google Cloud account *(optional)* | — |
+| 4 | — | Install Tailscale, run `tailscale funnel` |
+| 5 | Get an LLM API key if you have no GPU | same |
+
+That is the whole list. Everything else needs software that is not installed
+yet.
+
+### The installer — automated
+
+Pulls images, starts containers, generates secrets, and on a GPU machine
+pulls the models.
+
+### After the installer — guided, mostly automated
+
+Each step needs the one before it:
 
 ```
-1. Cloudflare tunnel   → your services get real hostnames
-2. Google OAuth        → needs that hostname for the redirect URI
-3. n8n credentials     → needs the OAuth client from step 2
-4. LLM credential      → needs n8n to exist
+1. Cloudflare tunnel   → your services get a real hostname
+                         (Path B: skip — Funnel already gave you one)
+2. n8n API key         → n8n has to be running first
+3. Google OAuth client → needs the hostname from step 1, because the
+                         redirect URI is https://n8n.<domain>/rest/...
+                         (Path B: skip — .ts.net is not accepted)
+4. Google credential in n8n → needs the client from step 3
+5. LLM credential in n8n    → needs n8n
+6. Open WebUI API key
+7. List on SearchByAI  (optional)
 ```
 
-Doing Google before Cloudflare does not work: the redirect URI is
-`https://n8n.yourdomain.com/rest/oauth2-credential/callback`, and Google will
-not accept a hostname that does not resolve.
+Doing Google before Cloudflare does not work: Google will not accept a
+redirect to a hostname that does not resolve.
 
 ---
 
