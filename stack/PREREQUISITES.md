@@ -1,8 +1,10 @@
 # Before you install
 
-Read this first. Three of these take time you cannot compress — a domain's
-nameservers can take up to 24 hours to propagate — so start them before you
-touch the installer.
+Read this first. A domain's nameservers can take up to 24 hours to propagate,
+so start that before you touch the installer.
+
+**The short version:** you need a Linux machine with Docker. Everything else
+is either free or replaceable — including the domain.
 
 This is a **Docker** install. Everything runs in containers on a machine you
 control.
@@ -14,14 +16,15 @@ control.
 | | Required for | Cost | Time |
 |---|---|---|---|
 | **A machine** running Linux with Docker | everything | — | 15 min |
-| **A domain you own** | public HTTPS, OAuth redirects | ~$10/year | 10 min + up to 24h |
+| **A domain you own** *(or a free tunnel — see below)* | public HTTPS, OAuth redirects | ~$10/year | 10 min + up to 24h |
 | **A Cloudflare account** (free) | the tunnel that makes it reachable | free | 10 min |
-| **A Google Cloud account** | Gmail, Drive, Sheets, Docs, Calendar in n8n | free tier | 15 min |
+| **A Google Cloud account** | Gmail, Drive, Sheets, Docs, Calendar in n8n | **free — no card** | 15 min |
 | **An LLM** — a GPU, or an API key | the AI nodes | varies | — |
 
-**Only the machine and the domain are truly unavoidable** for the full
-install. Google Cloud is skippable if you do not want n8n's Google nodes.
-See "If you do not have a domain" at the bottom.
+**Only the machine is truly unavoidable.** Google Cloud is free and
+skippable. The domain can be replaced with a free Tailscale Funnel hostname —
+see below — at the cost of a less professional-looking URL and no Google
+OAuth.
 
 ---
 
@@ -47,18 +50,23 @@ docker info 2>/dev/null | grep -i 'Runtimes.*nvidia'   # blank = no GPU, fine
 
 ---
 
-## 2. A domain
+## 2. A domain — recommended, not required
 
-You need one you control. Roughly $10/year from any registrar —
-Namecheap, Porkbun, Cloudflare itself.
+Roughly $10/year from any registrar: Namecheap, Porkbun, Cloudflare itself.
 
-**Why:** your services get real HTTPS hostnames (`n8n.yourdomain.com`), and
-Google's OAuth will not redirect back to anything else. Without a domain, the
-tunnel and Google OAuth both stop being possible.
+**Why it helps:** your services get real HTTPS hostnames
+(`n8n.yourdomain.com`), and Google's OAuth will only redirect to a domain you
+control — so n8n's Google nodes need one.
+
+**If you would rather not buy one**, skip to
+[If you do not have a domain](#if-you-do-not-have-a-domain). A free Tailscale
+Funnel hostname covers everything except the Google nodes.
 
 ---
 
 ## 3. Cloudflare account, and your domain added to it
+
+Only if you are using your own domain — skip this with Tailscale Funnel.
 
 Free. <https://dash.cloudflare.com/sign-up>
 
@@ -83,9 +91,14 @@ the zone is not on your account, which looks like a token problem and is not.
 
 ---
 
-## 4. Google Cloud account
+## 4. Google Cloud account — free, and optional
 
-Free tier is enough. <https://console.cloud.google.com>
+**This costs nothing.** Gmail, Drive, Sheets, Docs and Calendar all sit in
+Google's free tier. You do not need a billing account and you will not be
+asked for a card. If you have heard otherwise, that is Google Cloud's *paid*
+services — compute, storage, BigQuery — none of which this uses.
+
+<https://console.cloud.google.com>
 
 Sign in with the Google account whose Gmail, Drive and Calendar you want n8n
 to use — the OAuth consent is tied to that identity, so using a different one
@@ -152,7 +165,54 @@ it is transmitted to us, and none of it needs to be pasted into a chat.
 
 ## If you do not have a domain
 
-You can still list endpoints on SearchByAI without a domain, Cloudflare or
-Google Cloud — you just cannot run the full self-hosted stack.
+You do not strictly need one. **Tailscale Funnel** gives you a free, stable,
+public HTTPS URL with no domain, no open ports, and no router configuration.
 
-See <https://searchbyai.com/stack> for the current options.
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+sudo tailscale funnel 5678          # or whichever port you want public
+```
+
+The first run opens a browser to approve enabling Funnel; Tailscale then
+issues the certificate and updates your tailnet policy itself. You get a URL
+like:
+
+```
+https://your-machine.your-tailnet.ts.net
+```
+
+That is stable across restarts, which matters — it is what you register with
+SearchByAI, and a URL that changes breaks the listing.
+
+**What this gets you and what it does not:**
+
+| | Tailscale Funnel | Your own domain |
+|---|---|---|
+| Cost | free | ~$10/year |
+| Public HTTPS URL | yes | yes |
+| Stable across restarts | yes | yes |
+| Open ports needed | **none** | none |
+| Port forwarding | **none** | none |
+| Works behind CGNAT | yes | yes |
+| Google OAuth for n8n | **no** — Google will not accept a `.ts.net` redirect | yes |
+| Looks like your brand | no | yes |
+| Bandwidth | rate-limited, fine for a low-traffic node | your own |
+
+**The real trade:** Google OAuth needs a redirect URI on a domain you control,
+so with Funnel you lose n8n's Gmail, Drive, Sheets, Docs and Calendar nodes.
+Everything else — n8n itself, Open WebUI, LightRAG, crawl4ai, and listing on
+SearchByAI — works exactly the same.
+
+A reasonable path is to start with Funnel, and add a domain later if you want
+the Google nodes. Nothing else in the install changes when you do.
+
+### Other options
+
+- **Already hosting something?** A Replit app, a Hugging Face Space, a Vercel
+  function — the registry only needs a URL that answers. List it with
+  `connect.sh` and skip this stack entirely.
+- **Just want to try it?** Install without the tunnel. Everything runs on
+  `localhost`. You cannot be listed, but nothing stops you building.
+- **Avoid Cloudflare quick tunnels** (`trycloudflare.com`) for a listing. They
+  are free and need no account, but the URL changes on every restart.
