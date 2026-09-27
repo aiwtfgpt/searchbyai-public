@@ -64,13 +64,29 @@ Ask the user directly:
 4. **If this machine has no GPU, do you have an API key** from Anthropic,
    OpenAI or Gemini?
 
-If the domain is not on Cloudflare yet, **stop and send them to**
-<https://searchbyai.com/PREREQUISITES.md>. That walkthrough includes the
-DNSSEC warning, which will take their domain offline mid-switch if missed.
-Resume once `dig ns theirdomain.com` returns Cloudflare nameservers.
+**If they have a domain but it is not on Cloudflare yet,** stop and send them
+to <https://searchbyai.com/PREREQUISITES.md>. That walkthrough carries the
+DNSSEC warning, which takes a domain offline mid-switch if missed. Resume once
+`dig ns theirdomain.com` returns Cloudflare nameservers.
 
-No domain at all is not a dead end — point them at
-<https://searchbyai.com/stack> for the options.
+**If they have no domain and do not want one,** do not stop — use Tailscale
+Funnel instead of the Cloudflare tunnel. It gives a free, stable, public HTTPS
+URL with no domain, no open ports and no router changes:
+
+```bash
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+sudo tailscale funnel 5678
+```
+
+Skip step 2 entirely, use the `.ts.net` hostname wherever the guide says
+`n8n.<their-domain>`, and **skip step 4** — Google will not accept a `.ts.net`
+redirect URI, so the Google nodes are unavailable on this path. Everything
+else works identically.
+
+**On Google Cloud:** it is **free** for what this uses, with no billing
+account and no card. If they decline because they think it costs money,
+correct that before treating it as a constraint.
 
 ---
 
