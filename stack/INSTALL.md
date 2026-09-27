@@ -47,6 +47,33 @@ through the tunnel.
 
 ---
 
+## Step -1 — Confirm they have the prerequisites
+
+**Ask before you check anything on the machine.** Three of these take real
+time — a nameserver change can propagate for up to 24 hours — and finding out
+at step 2 that they have no domain wastes the whole install.
+
+Ask the user directly:
+
+1. **Do you own a domain, and is it already added to Cloudflare and showing
+   Active?** Not "do you have a website" — specifically a domain whose
+   nameservers point at Cloudflare.
+2. **Do you have a Cloudflare account?** Free.
+3. **Do you have a Google Cloud account?** Only needed for n8n's Gmail,
+   Drive, Sheets, Docs and Calendar nodes. Skippable.
+4. **If this machine has no GPU, do you have an API key** from Anthropic,
+   OpenAI or Gemini?
+
+If the domain is not on Cloudflare yet, **stop and send them to**
+<https://searchbyai.com/PREREQUISITES.md>. That walkthrough includes the
+DNSSEC warning, which will take their domain offline mid-switch if missed.
+Resume once `dig ns theirdomain.com` returns Cloudflare nameservers.
+
+No domain at all is not a dead end — point them at
+<https://searchbyai.com/stack> for the options.
+
+---
+
 ## Step 0 — Check the machine first
 
 **Download nothing until this passes.** Which build to install depends on what
